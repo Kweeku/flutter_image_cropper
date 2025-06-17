@@ -10,6 +10,8 @@ import androidx.preference.PreferenceManager;
 
 import android.os.Build;
 import android.view.WindowInsetsController;
+import android.view.WindowManager;
+import android.view.View;
 
 import com.yalantis.ucrop.UCrop;
 import com.yalantis.ucrop.model.AspectRatio;
@@ -53,6 +55,15 @@ public class ImageCropperDelegate implements PluginRegistry.ActivityResultListen
         String initAspectRatio = call.argument("android.init_aspect_ratio");
 
         pendingResult = result;
+
+        // Configure the activity to ensure status bar doesn't overlap with action buttons
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            activity.getWindow().setFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS,
+                    WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
+            activity.getWindow().setStatusBarColor(Color.TRANSPARENT);
+            activity.getWindow().getDecorView().setSystemUiVisibility(
+                    View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN);
+        }
 
         File outputDir = activity.getCacheDir();
         File outputFile;
@@ -101,7 +112,29 @@ public class ImageCropperDelegate implements PluginRegistry.ActivityResultListen
             cropper.withAspectRatio(ratioX.floatValue(), ratioY.floatValue());
         }
 
-        activity.startActivityForResult(cropper.getIntent(activity), UCrop.REQUEST_CROP);
+        // Configure the intent to handle status bar properly
+        Intent cropIntent = cropper.getIntent(activity);
+        cropIntent = configureCropActivityForStatusBar(cropIntent);
+        activity.startActivityForResult(cropIntent, UCrop.REQUEST_CROP);
+
+        // Handle status bar appearance for the current activity
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            WindowInsetsController insetsController = activity.getWindow().getInsetsController();
+            if (insetsController != null) {
+                insetsController.setSystemBarsAppearance(WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS,
+                        WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS);
+                activity.getWindow().setStatusBarColor(Color.TRANSPARENT);
+            }
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            activity.getWindow().setStatusBarColor(Color.TRANSPARENT);
+            // Set system UI flags to prevent status bar overlap
+            activity.getWindow().getDecorView().setSystemUiVisibility(
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN);
+        } else {
+            // For older Android versions
+            View decorView = activity.getWindow().getDecorView();
+            decorView.setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN);
+        }
     }
 
     public void recoverImage(MethodCall call, MethodChannel.Result result) {
@@ -185,21 +218,41 @@ public class ImageCropperDelegate implements PluginRegistry.ActivityResultListen
         if (toolbarColor != null) {
             options.setToolbarColor(toolbarColor);
         }
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-              // For Android 12 (API 31) and beyond
-          WindowInsetsController insetsController = activity.getWindow().getInsetsController();
-          if (insetsController != null) {
-             insetsController.setSystemBarsAppearance(WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS,
-                 WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS);
-             activity.getWindow().setStatusBarColor(statusBarColor != null ? statusBarColor : Color.TRANSPARENT);
-          }
-        }
-        else{
-        if (statusBarColor != null) {
-            options.setStatusBarColor(statusBarColor);
-        } else if (toolbarColor != null) {
-            options.setStatusBarColor(darkenColor(toolbarColor));
-        }
+        
+        // Proper status bar handling for all Android versions
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            // For Android 12 (API 31) and beyond
+            WindowInsetsController insetsController = activity.getWindow().getInsetsController();
+            if (insetsController != null) {
+                insetsController.setSystemBarsAppearance(WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS,
+                    WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS);
+                activity.getWindow().setStatusBarColor(statusBarColor != null ? statusBarColor : Color.TRANSPARENT);
+            }
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            // For Android 5.0 (API 21) to Android 12
+            if (statusBarColor != null) {
+                options.setStatusBarColor(statusBarColor);
+                activity.getWindow().setStatusBarColor(statusBarColor);
+            } else if (toolbarColor != null) {
+                int darkToolbarColor = darkenColor(toolbarColor);
+                options.setStatusBarColor(darkToolbarColor);
+                activity.getWindow().setStatusBarColor(darkToolbarColor);
+            } else {
+                // Set default transparent status bar
+                options.setStatusBarColor(Color.TRANSPARENT);
+                activity.getWindow().setStatusBarColor(Color.TRANSPARENT);
+            }
+            
+            // Configure window to prevent status bar overlap
+            activity.getWindow().getDecorView().setSystemUiVisibility(
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN);
+        } else {
+            // For Android versions below 5.0 (API 21)
+            if (statusBarColor != null) {
+                options.setStatusBarColor(statusBarColor);
+            } else if (toolbarColor != null) {
+                options.setStatusBarColor(darkenColor(toolbarColor));
+            }
         }
         if (toolbarWidgetColor != null) {
             options.setToolbarWidgetColor(toolbarWidgetColor);
@@ -247,6 +300,33 @@ public class ImageCropperDelegate implements PluginRegistry.ActivityResultListen
 
     private void clearMethodCallAndResult() {
         pendingResult = null;
+    }
+
+    /**
+     * Configure the UCrop activity to properly handle the status bar
+     * This ensures that the status bar does not cover the action buttons
+     * @param cropIntent The UCrop intent to be configured
+     * @return The configured intent
+     */
+    private Intent configureCropActivityForStatusBar(Intent cropIntent) {
+        if (cropIntent != null) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                // Set flags to ensure proper handling of system UI visibility
+                cropIntent.putExtra("android.intent.extra.UI_OPTIONS", "LOW_PROFILE");
+                cropIntent.putExtra("statusBarTranslucent", true);
+                
+                // Add additional flags for UCrop activity
+                cropIntent.putExtra("ucrop.status_bar_color", Color.TRANSPARENT);
+                cropIntent.putExtra("ucrop.show_system_ui", true);
+                
+                // Set immersive mode flags - allows the app to handle how the status bar interacts with the app
+                cropIntent.putExtra("ucrop.immersive_mode", true);
+            }
+            
+            // Add additional padding to top of the crop view to prevent overlap with status bar
+            cropIntent.putExtra("ucrop.toolbar_additional_padding", 24);
+        }
+        return cropIntent;
     }
 
     private int darkenColor(int color) {
