@@ -2,6 +2,10 @@ package vn.hunghd.flutter.plugins.imagecropper;
 
 
 import android.app.Activity;
+import android.os.Build;
+import android.view.View;
+import android.view.WindowManager;
+import android.graphics.Color;
 
 import io.flutter.embedding.engine.plugins.FlutterPlugin;
 import io.flutter.embedding.engine.plugins.activity.ActivityAware;
@@ -51,10 +55,72 @@ public class ImageCropperPlugin implements MethodCallHandler, FlutterPlugin, Act
 
     @Override
     public void onAttachedToActivity(ActivityPluginBinding activityPluginBinding) {
-
         setupActivity(activityPluginBinding.getActivity());
         this.activityPluginBinding = activityPluginBinding;
         activityPluginBinding.addActivityResultListener(delegate);
+        
+        // Configure activity for proper status bar handling
+        Activity activity = activityPluginBinding.getActivity();
+        setupActivityForStatusBar(activity);
+    }
+    
+    /**
+     * Configure the activity for proper status bar handling
+     * This ensures that the status bar doesn't cover action buttons
+     * especially on Google Pixel devices
+     * @param activity The activity to configure
+     */
+    private void setupActivityForStatusBar(Activity activity) {
+        if (activity != null) {
+            // Check if this is a Pixel device
+            boolean isPixelDevice = isPixelDevice();
+            
+            if (isPixelDevice && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                // Special handling for Pixel devices on Android 9.0 (API 28) and above
+                activity.getWindow().setFlags(
+                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+                );
+                
+                // Handle display cutouts for devices with notches (like Pixel 3 XL and newer)
+                activity.getWindow().getAttributes().layoutInDisplayCutoutMode = 
+                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+                
+                // Ensure transparent status bar
+                activity.getWindow().setStatusBarColor(Color.TRANSPARENT);
+                
+                // Set system UI visibility flags for proper handling on Pixel devices
+                activity.getWindow().getDecorView().setSystemUiVisibility(
+                    View.SYSTEM_UI_FLAG_LAYOUT_STABLE | 
+                    View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN |
+                    View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION |
+                    View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                );
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                // For Android 5.0 to 8.1, or non-Pixel devices on Android 9.0+
+                activity.getWindow().addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
+                activity.getWindow().setStatusBarColor(Color.TRANSPARENT);
+                
+                // Set system UI visibility flags for proper handling
+                activity.getWindow().getDecorView().setSystemUiVisibility(
+                    View.SYSTEM_UI_FLAG_LAYOUT_STABLE | 
+                    View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                );
+            }
+        }
+    }
+    
+    /**
+     * Check if the current device is a Google Pixel device
+     * This is used to apply specific fixes for Pixel devices
+     * @return true if the device is a Pixel device
+     */
+    private boolean isPixelDevice() {
+        String manufacturer = Build.MANUFACTURER.toLowerCase();
+        String model = Build.MODEL.toLowerCase();
+        String brand = Build.BRAND.toLowerCase();
+        
+        return (manufacturer.contains("google") && (model.contains("pixel") || brand.contains("pixel")));
     }
     //////////////////////////////////////////////////////////////////////////////////////
 
@@ -70,6 +136,18 @@ public class ImageCropperPlugin implements MethodCallHandler, FlutterPlugin, Act
 
     @Override
     public void onDetachedFromActivity() {
+        // Restore any window configurations that were set
+        if (activityPluginBinding != null && activityPluginBinding.getActivity() != null) {
+            Activity activity = activityPluginBinding.getActivity();
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                // Clear any flags that may have been set
+                activity.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS);
+                
+                // Reset system UI visibility to default
+                activity.getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_VISIBLE);
+            }
+        }
+        
         activityPluginBinding.removeActivityResultListener(delegate);
         activityPluginBinding = null;
         delegate = null;

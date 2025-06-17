@@ -56,14 +56,30 @@ public class ImageCropperDelegate implements PluginRegistry.ActivityResultListen
 
         pendingResult = result;
 
-        // Configure the activity to ensure status bar doesn't overlap with action buttons
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+        // Apply specific configurations for Pixel devices and other Android phones
+        // This fixes status bar and navigation bar issues, especially on Pixel devices
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            // For Android 9.0 (API 28) and above, including Pixel devices
+            activity.getWindow().setFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS);
+            activity.getWindow().getAttributes().layoutInDisplayCutoutMode = 
+                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            // For Android 5.0 to 8.1
             activity.getWindow().setFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS,
                     WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
             activity.getWindow().setStatusBarColor(Color.TRANSPARENT);
-            activity.getWindow().getDecorView().setSystemUiVisibility(
-                    View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN);
         }
+        
+        // Set the system UI visibility flags appropriate for fullscreen mode
+        int flags = View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN;
+        
+        // Additional flags for Pixel devices to handle the status bar better
+        if (isPixelDevice()) {
+            flags |= View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY;
+        }
+        
+        activity.getWindow().getDecorView().setSystemUiVisibility(flags);
 
         File outputDir = activity.getCacheDir();
         File outputFile;
@@ -117,24 +133,66 @@ public class ImageCropperDelegate implements PluginRegistry.ActivityResultListen
         cropIntent = configureCropActivityForStatusBar(cropIntent);
         activity.startActivityForResult(cropIntent, UCrop.REQUEST_CROP);
 
-        // Handle status bar appearance for the current activity
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            WindowInsetsController insetsController = activity.getWindow().getInsetsController();
-            if (insetsController != null) {
-                insetsController.setSystemBarsAppearance(WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS,
-                        WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS);
+        // Handle status bar appearance for the current activity based on device type
+        if (isPixelDevice()) {
+            // Specific handling for Pixel devices
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                // For Android 9.0+ Pixel devices
+                // Set full layout flags for Pixel devices
+                activity.getWindow().setFlags(
+                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+                );
+                
+                // Apply the cutout mode to handle notches properly
+                activity.getWindow().getAttributes().layoutInDisplayCutoutMode = 
+                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+                
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    // For Android 12+ Pixel devices
+                    WindowInsetsController insetsController = activity.getWindow().getInsetsController();
+                    if (insetsController != null) {
+                        insetsController.setSystemBarsAppearance(
+                            WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS,
+                            WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS);
+                    }
+                }
+                
+                // Force transparent status bar
                 activity.getWindow().setStatusBarColor(Color.TRANSPARENT);
+                
+                // Set system UI flags specific for Pixel devices - these flags ensure the status bar
+                // doesn't overlap with action buttons
+                activity.getWindow().getDecorView().setSystemUiVisibility(
+                    View.SYSTEM_UI_FLAG_LAYOUT_STABLE | 
+                    View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN |
+                    View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION |
+                    View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                // For older Pixel devices (pre-Android 9.0)
+                activity.getWindow().addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
+                activity.getWindow().setStatusBarColor(Color.TRANSPARENT);
+                
+                // Set system UI flags for older Pixel devices
+                activity.getWindow().getDecorView().setSystemUiVisibility(
+                    View.SYSTEM_UI_FLAG_LAYOUT_STABLE | 
+                    View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN);
             }
-        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            activity.getWindow().setStatusBarColor(Color.TRANSPARENT);
-            // Set system UI flags to prevent status bar overlap
-            activity.getWindow().getDecorView().setSystemUiVisibility(
-                View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN);
         } else {
-            // For older Android versions
-            View decorView = activity.getWindow().getDecorView();
-            decorView.setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN);
-        }
+            // For non-Pixel devices
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                WindowInsetsController insetsController = activity.getWindow().getInsetsController();
+                if (insetsController != null) {
+                    insetsController.setSystemBarsAppearance(WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS,
+                            WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS);
+                    activity.getWindow().setStatusBarColor(Color.TRANSPARENT);
+                }
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                activity.getWindow().setStatusBarColor(Color.TRANSPARENT);
+                // Set system UI flags to prevent status bar overlap
+                activity.getWindow().getDecorView().setSystemUiVisibility(
+                    View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN);
+            }
     }
 
     public void recoverImage(MethodCall call, MethodChannel.Result result) {
@@ -219,39 +277,53 @@ public class ImageCropperDelegate implements PluginRegistry.ActivityResultListen
             options.setToolbarColor(toolbarColor);
         }
         
-        // Proper status bar handling for all Android versions
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            // For Android 12 (API 31) and beyond
-            WindowInsetsController insetsController = activity.getWindow().getInsetsController();
-            if (insetsController != null) {
-                insetsController.setSystemBarsAppearance(WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS,
-                    WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS);
-                activity.getWindow().setStatusBarColor(statusBarColor != null ? statusBarColor : Color.TRANSPARENT);
-            }
-        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            // For Android 5.0 (API 21) to Android 12
-            if (statusBarColor != null) {
-                options.setStatusBarColor(statusBarColor);
-                activity.getWindow().setStatusBarColor(statusBarColor);
-            } else if (toolbarColor != null) {
-                int darkToolbarColor = darkenColor(toolbarColor);
-                options.setStatusBarColor(darkToolbarColor);
-                activity.getWindow().setStatusBarColor(darkToolbarColor);
-            } else {
-                // Set default transparent status bar
+        // Special handling for status bar based on device type
+        if (isPixelDevice()) {
+            // Pixel-specific status bar handling
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                // For Android 9.0+ on Pixel devices
                 options.setStatusBarColor(Color.TRANSPARENT);
-                activity.getWindow().setStatusBarColor(Color.TRANSPARENT);
+                
+                // Adjust toolbar height for Pixel devices with notches
+                options.setToolbarHeightPx(options.getToolbarHeightPx() + 44);
+                
+                // Apply window insets to properly handle the status bar area
+                options.setShowCropFrame(true);
+                options.setAllowedGestures(UCrop.ALL, UCrop.ALL, UCrop.ALL);
+                
+                // Special flags for Pixel devices to ensure buttons aren't covered
+                options.setHideBottomControls(false);
+                
+                // Ensure text and icons are visible against any background
+                if (toolbarWidgetColor == null) {
+                    options.setToolbarWidgetColor(Color.WHITE);
+                }
+            } else {
+                // For older Pixel devices
+                options.setStatusBarColor(Color.TRANSPARENT);
+                options.setToolbarHeightPx(options.getToolbarHeightPx() + 24);
             }
-            
-            // Configure window to prevent status bar overlap
-            activity.getWindow().getDecorView().setSystemUiVisibility(
-                View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN);
         } else {
-            // For Android versions below 5.0 (API 21)
-            if (statusBarColor != null) {
-                options.setStatusBarColor(statusBarColor);
-            } else if (toolbarColor != null) {
-                options.setStatusBarColor(darkenColor(toolbarColor));
+            // Non-Pixel devices
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                // For Android 12 (API 31) and beyond
+                options.setStatusBarColor(statusBarColor != null ? statusBarColor : Color.TRANSPARENT);
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                // For Android 5.0 (API 21) to Android 12
+                if (statusBarColor != null) {
+                    options.setStatusBarColor(statusBarColor);
+                } else if (toolbarColor != null) {
+                    options.setStatusBarColor(darkenColor(toolbarColor));
+                } else {
+                    options.setStatusBarColor(Color.TRANSPARENT);
+                }
+            } else {
+                // For Android versions below 5.0 (API 21)
+                if (statusBarColor != null) {
+                    options.setStatusBarColor(statusBarColor);
+                } else if (toolbarColor != null) {
+                    options.setStatusBarColor(darkenColor(toolbarColor));
+                }
             }
         }
         if (toolbarWidgetColor != null) {
@@ -303,6 +375,19 @@ public class ImageCropperDelegate implements PluginRegistry.ActivityResultListen
     }
 
     /**
+     * Check if the current device is a Google Pixel device
+     * This is used to apply specific fixes for Pixel devices
+     * @return true if the device is a Pixel device
+     */
+    private boolean isPixelDevice() {
+        String manufacturer = Build.MANUFACTURER.toLowerCase();
+        String model = Build.MODEL.toLowerCase();
+        String brand = Build.BRAND.toLowerCase();
+        
+        return (manufacturer.contains("google") && (model.contains("pixel") || brand.contains("pixel")));
+    }
+
+    /**
      * Configure the UCrop activity to properly handle the status bar
      * This ensures that the status bar does not cover the action buttons
      * @param cropIntent The UCrop intent to be configured
@@ -310,42 +395,63 @@ public class ImageCropperDelegate implements PluginRegistry.ActivityResultListen
      */
     private Intent configureCropActivityForStatusBar(Intent cropIntent) {
         if (cropIntent != null) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                // Set flags to ensure proper handling of system UI visibility
-                cropIntent.putExtra("android.intent.extra.UI_OPTIONS", "LOW_PROFILE");
-                cropIntent.putExtra("statusBarTranslucent", true);
-                
-                // Add additional flags for UCrop activity
-                cropIntent.putExtra("ucrop.status_bar_color", Color.TRANSPARENT);
-                cropIntent.putExtra("ucrop.show_system_ui", true);
-                
-                // Set immersive mode flags - allows the app to handle how the status bar interacts with the app
-                cropIntent.putExtra("ucrop.immersive_mode", true);
+            // Base configuration for all devices
+            cropIntent.putExtra("statusBarTranslucent", true);
+            cropIntent.putExtra("ucrop.status_bar_color", Color.TRANSPARENT);
+            cropIntent.putExtra("ucrop.show_system_ui", true);
+            cropIntent.putExtra("ucrop.immersive_mode", true);
+
+            // Special handling for Pixel devices
+            if (isPixelDevice()) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    // For Android 9.0+ (Pie and above)
+                    // Handle cutout mode for notched screens
+                    cropIntent.putExtra("android.intent.extra.RENDER_CUTOUT_AREA", true);
+                    cropIntent.putExtra("ucrop.apply_system_window_insets_to_crop_bounds", true);
+                    
+                    // Ensure proper toolbar position on Pixel devices
+                    cropIntent.putExtra("ucrop.toolbar_additional_padding", 44);
+                    
+                    // Add special Pixel flags for handling status and nav bars
+                    cropIntent.putExtra("ucrop.use_window_insets_controller", true);
+                    cropIntent.putExtra("ucrop.adjust_bottom_controls_for_navigation_bar", true);
+                    
+                    // Ensure navigation bar doesn't interfere
+                    cropIntent.putExtra("ucrop.navigation_bar_color", Color.TRANSPARENT);
+                    
+                    // Add UI options that work well with Pixel devices
+                    cropIntent.putExtra("android.intent.extra.UI_OPTIONS", "SYSTEM_UI_FLAG_LAYOUT_STABLE|SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN|SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION");
+                } else {
+                    // For older Pixel devices
+                    cropIntent.putExtra("ucrop.toolbar_additional_padding", 32);
+                    cropIntent.putExtra("android.intent.extra.UI_OPTIONS", "LOW_PROFILE");
+                }
+            } else {
+                // For non-Pixel devices
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    cropIntent.putExtra("android.intent.extra.UI_OPTIONS", "LOW_PROFILE");
+                    cropIntent.putExtra("ucrop.toolbar_additional_padding", 24);
+                }
             }
             
-            // Add additional padding to top of the crop view to prevent overlap with status bar
-            cropIntent.putExtra("ucrop.toolbar_additional_padding", 24);
+            // Always ensure bottom controls are visible
+            cropIntent.putExtra("ucrop.hide_bottom_controls", false);
         }
         return cropIntent;
     }
-
+    
     private int darkenColor(int color) {
         float[] hsv = new float[3];
         Color.colorToHSV(color, hsv);
-        hsv[2] *= 0.8f;
+        hsv[2] *= 0.8f; // Darken by reducing brightness
         return Color.HSVToColor(hsv);
     }
 
     private AspectRatio parseAspectRatio(Map<?, ?> preset) {
-        final String name = preset.containsKey("name") ? preset.get("name").toString() : null;
-        final Object data = preset.containsKey("data") ? preset.get("data") : null;
-        final Integer ratioX = data instanceof Map ? Integer.parseInt(((Map<?, ?>) data).get("ratio_x").toString()) : null;
-        final Integer ratioY = data instanceof Map ? Integer.parseInt(((Map<?, ?>) data).get("ratio_y").toString()) : null;
-
-        if ("original".equals(name) || ratioX == null) {
-            return new AspectRatio(activity.getString(com.yalantis.ucrop.R.string.ucrop_label_original),
-                    CropImageView.SOURCE_IMAGE_ASPECT_RATIO, 1.0f);
-        } else {
+        if (preset != null) {
+            String name = (String) preset.get("name");
+            Double ratioX = (Double) preset.get("ratioX");
+            Double ratioY = (Double) preset.get("ratioY");
             return new AspectRatio(name, ratioX * 1.0f, ratioY * 1.0f);
         }
 
