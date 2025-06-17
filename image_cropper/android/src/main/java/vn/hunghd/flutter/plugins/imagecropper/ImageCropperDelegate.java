@@ -59,11 +59,19 @@ public class ImageCropperDelegate implements PluginRegistry.ActivityResultListen
 
         // Apply specific configurations for Pixel devices and other Android phones
         // This fixes status bar and navigation bar issues, especially on Pixel devices
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            // For Android 11 (API 30) and above
+            activity.getWindow().setDecorFitsSystemWindows(false);
+            WindowInsetsController controller = activity.getWindow().getInsetsController();
+            if (controller != null) {
+                controller.hide(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+                controller.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+            }
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             // For Android 9.0 (API 28) and above, including Pixel devices
             activity.getWindow().setFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
                     WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS);
-            activity.getWindow().getAttributes().layoutInDisplayCutoutMode = 
+            activity.getWindow().getAttributes().layoutInDisplayCutoutMode =
                 WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
         } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             // For Android 5.0 to 8.1
@@ -71,15 +79,19 @@ public class ImageCropperDelegate implements PluginRegistry.ActivityResultListen
                     WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
             activity.getWindow().setStatusBarColor(Color.TRANSPARENT);
         }
-        
+
         // Set the system UI visibility flags appropriate for fullscreen mode
-        int flags = View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN;
-        
+        int flags = View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                  | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                  | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                  | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION // Hide navigation bar
+                  | View.SYSTEM_UI_FLAG_FULLSCREEN;     // Hide status bar
+
         // Additional flags for Pixel devices to handle the status bar better
         if (isPixelDevice()) {
             flags |= View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY;
         }
-        
+
         activity.getWindow().getDecorView().setSystemUiVisibility(flags);
 
         File outputDir = activity.getCacheDir();
@@ -134,69 +146,37 @@ public class ImageCropperDelegate implements PluginRegistry.ActivityResultListen
 
         // Configure the intent to handle status bar properly
         Intent cropIntent = cropper.getIntent(activity);
-        cropIntent = configureCropActivityForStatusBar(cropIntent);
+        // cropIntent = configureCropActivityForStatusBar(cropIntent); // Commenting out for now to see effect of direct flags
         activity.startActivityForResult(cropIntent, UCrop.REQUEST_CROP);
 
         // Handle status bar appearance for the current activity based on device type
-        if (isPixelDevice()) {
-            // Specific handling for Pixel devices
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                // For Android 9.0+ Pixel devices
-                // Set full layout flags for Pixel devices
-                activity.getWindow().setFlags(
-                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
-                );
-                
-                // Apply the cutout mode to handle notches properly
-                activity.getWindow().getAttributes().layoutInDisplayCutoutMode = 
-                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
-                
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    // For Android 12+ Pixel devices
-                    WindowInsetsController insetsController = activity.getWindow().getInsetsController();
-                    if (insetsController != null) {
-                        insetsController.setSystemBarsAppearance(
-                            WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS,
-                            WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS);
-                    }
-                }
-                
-                // Force transparent status bar
-                activity.getWindow().setStatusBarColor(Color.TRANSPARENT);
-                
-                // Set system UI flags specific for Pixel devices - these flags ensure the status bar
-                // doesn't overlap with action buttons
-                activity.getWindow().getDecorView().setSystemUiVisibility(
-                    View.SYSTEM_UI_FLAG_LAYOUT_STABLE | 
-                    View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN |
-                    View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION |
-                    View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
-            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                // For older Pixel devices (pre-Android 9.0)
-                activity.getWindow().addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
-                activity.getWindow().setStatusBarColor(Color.TRANSPARENT);
-                
-                // Set system UI flags for older Pixel devices
-                activity.getWindow().getDecorView().setSystemUiVisibility(
-                    View.SYSTEM_UI_FLAG_LAYOUT_STABLE | 
-                    View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN);
+        // Consolidate and simplify status bar handling
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            activity.getWindow().addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
+            activity.getWindow().addFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS);
+            activity.getWindow().setStatusBarColor(Color.TRANSPARENT);
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            activity.getWindow().setDecorFitsSystemWindows(false);
+            WindowInsetsController insetsController = activity.getWindow().getInsetsController();
+            if (insetsController != null) {
+                insetsController.hide(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+                insetsController.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+                 // Ensure light status bar icons if the status bar is transparent and background is light
+                insetsController.setSystemBarsAppearance(WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS, WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS);
             }
         } else {
-            // For non-Pixel devices
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                WindowInsetsController insetsController = activity.getWindow().getInsetsController();
-                if (insetsController != null) {
-                    insetsController.setSystemBarsAppearance(WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS,
-                            WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS);
-                    activity.getWindow().setStatusBarColor(Color.TRANSPARENT);
-                }
-            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                activity.getWindow().setStatusBarColor(Color.TRANSPARENT);
-                // Set system UI flags to prevent status bar overlap
-                activity.getWindow().getDecorView().setSystemUiVisibility(
-                    View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN);
+            int newFlags = View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                        | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                        | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                        | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                        | View.SYSTEM_UI_FLAG_FULLSCREEN;
+            if (isPixelDevice()) {
+                 newFlags |= View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY;
             }
+            activity.getWindow().getDecorView().setSystemUiVisibility(newFlags);
+        }
     }
 
     public void recoverImage(MethodCall call, MethodChannel.Result result) {
