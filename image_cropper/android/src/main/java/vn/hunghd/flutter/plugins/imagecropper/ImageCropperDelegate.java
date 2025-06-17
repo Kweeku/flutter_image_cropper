@@ -48,6 +48,7 @@ public class ImageCropperDelegate implements PluginRegistry.ActivityResultListen
         Integer maxHeight = call.argument("max_height");
         Double ratioX = call.argument("ratio_x");
         Double ratioY = call.argument("ratio_y");
+        String title = call.argument("android.toolbar_title"); // Added to read toolbar title
         String compressFormat = call.argument("compress_format");
         Integer compressQuality = call.argument("compress_quality");
         ArrayList<Map<?, ?>> aspectRatioPresets = call.argument("android.aspect_ratio_presets");
@@ -98,6 +99,9 @@ public class ImageCropperDelegate implements PluginRegistry.ActivityResultListen
         options.setMaxBitmapSize(10000);
 
         // UI customization settings
+        if (title != null && !title.isEmpty()) { // Set toolbar title if provided
+            options.setToolbarTitle(title);
+        }
         if ("circle".equals(cropStyle)) {
             options.setCircleDimmedLayer(true);
         }
