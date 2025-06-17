@@ -3,10 +3,19 @@ import 'dart:io';
 import 'package:dotted_border/dotted_border.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.dark,
+      statusBarBrightness: Brightness.light,
+    ),
+  );
   runApp(const MyApp());
 }
 
@@ -35,6 +44,11 @@ class MyApp extends StatelessWidget {
           centerTitle: false,
           foregroundColor: Colors.white,
           actionsIconTheme: IconThemeData(color: Colors.white),
+          systemOverlayStyle: SystemUiOverlayStyle(
+            statusBarColor: Colors.transparent,
+            statusBarIconBrightness: Brightness.light,
+            statusBarBrightness: Brightness.dark,
+          ),
         ),
         elevatedButtonTheme: ElevatedButtonThemeData(
           style: ButtonStyle(
@@ -69,7 +83,7 @@ class MyApp extends StatelessWidget {
           ),
         ),
         colorScheme: ColorScheme.fromSwatch().copyWith(
-          background: const Color(0xFFFDF5EC),
+          surface: const Color(0xFFFDF5EC),
           primary: const Color(0xFFD0996F),
         ),
       ),
@@ -286,8 +300,9 @@ class _HomePageState extends State<HomePage> {
         compressQuality: 100,
         uiSettings: [
           AndroidUiSettings(
-            toolbarTitle: 'Cropper',
-            toolbarColor: Colors.deepOrange,
+            toolbarTitle: 'Crop Image',
+            toolbarColor: Colors.black,
+            statusBarColor: Colors.black,
             toolbarWidgetColor: Colors.white,
             initAspectRatio: CropAspectRatioPreset.square,
             lockAspectRatio: false,
@@ -299,7 +314,7 @@ class _HomePageState extends State<HomePage> {
             ],
           ),
           IOSUiSettings(
-            title: 'Cropper',
+            title: 'Crop Image',
             aspectRatioPresets: [
               CropAspectRatioPreset.original,
               CropAspectRatioPreset.square,
